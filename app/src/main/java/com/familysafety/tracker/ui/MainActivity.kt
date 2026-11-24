@@ -49,8 +49,9 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
         if (fineLocationGranted) {
-            // Start background location service
+            // Start background location service and fetch immediate location
             LocationTrackingService.startService(this)
+            FamilySafetyApp.instance.repository.refreshCurrentUserLocation()
         }
     }
 
@@ -155,6 +156,7 @@ class MainActivity : ComponentActivity() {
             permissionLauncher.launch(missing.toTypedArray())
         } else {
             LocationTrackingService.startService(this)
+            FamilySafetyApp.instance.repository.refreshCurrentUserLocation()
         }
     }
 

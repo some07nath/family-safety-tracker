@@ -1,5 +1,6 @@
 package com.familysafety.tracker.data.repository
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -8,6 +9,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.google.android.gms.location.LocationServices
 import com.familysafety.tracker.data.local.AppDatabase
 import com.familysafety.tracker.data.local.OfflineLocationEntity
 import com.familysafety.tracker.data.model.ActivityType
@@ -27,6 +29,7 @@ class LocationRepository(private val context: Context) {
     private val db = AppDatabase.getInstance(context)
     private val locationDao = db.locationDao()
     private val workManager = WorkManager.getInstance(context)
+    private val prefs = context.getSharedPreferences("family_circle_prefs", Context.MODE_PRIVATE)
 
     // Observable unsynced points count
     val unsyncedCountFlow: Flow<Int> = locationDao.getUnsyncedCountFlow()
@@ -36,11 +39,47 @@ class LocationRepository(private val context: Context) {
     val familyMembers = _familyMembers.asStateFlow()
 
     init {
-        // Initialize mock family members around a sensible default center for demonstration
-        initializeDemoFamilyCircle()
+        loadFamilyCircle()
+        refreshCurrentUserLocation()
     }
 
-    private fun initializeDemoFamilyCircle() {
+    private fun loadFamilyCircle() {
+        val hasCustomized = prefs.getBoolean("has_customized_members", false)
+        if (hasCustomized) {
+            // Load saved members from prefs
+            val membersJson = prefs.getString("saved_members", "") ?: ""
+            if (membersJson.isNotEmpty()) {
+                val list = mutableListOf<FamilyMember>()
+                val items = membersJson.split("###")
+                for (item in items) {
+                    val parts = item.split(":::")
+                    if (parts.size >= 5) {
+                        list.add(
+                            FamilyMember(
+                                id = parts[0],
+                                name = parts[1],
+                                relationship = parts[2],
+                                latitude = parts[3].toDoubleOrNull() ?: 22.5726,
+                                longitude = parts[4].toDoubleOrNull() ?: 88.3639,
+                                accuracy = 10f,
+                                speedKmh = 0f,
+                                bearing = 0f,
+                                batteryLevel = 85,
+                                isCharging = false,
+                                activityType = ActivityType.STILL,
+                                lastUpdated = System.currentTimeMillis() - 60_000,
+                                isOnline = true,
+                                isCurrentUser = false
+                            )
+                        )
+                    }
+                }
+                _familyMembers.value = list
+                return
+            }
+        }
+
+        // Default: Kolkata demo members
         val now = System.currentTimeMillis()
         val defaultMembers = listOf(
             FamilyMember(
@@ -92,6 +131,79 @@ class LocationRepository(private val context: Context) {
         _familyMembers.value = defaultMembers
     }
 
+    private fun persistMembers() {
+        val nonUserMembers = _familyMembers.value.filter { !it.isCurrentUser }
+        val serialized = nonUserMembers.joinToString("###") {
+            "${it.id}:::${it.name}:::${it.relationship}:::${it.latitude}:::${it.longitude}"
+        }
+        prefs.edit()
+            .putBoolean("has_customized_members", true)
+            .putString("saved_members", serialized)
+            .apply()
+    }
+
+    fun addFamilyMember(name: String, relationship: String, latitude: Double, longitude: Double) {
+        val newMember = FamilyMember(
+            id = "custom_${System.currentTimeMillis()}",
+            name = name,
+            relationship = relationship,
+            latitude = latitude,
+            longitude = longitude,
+            accuracy = 10f,
+            speedKmh = 0f,
+            bearing = 0f,
+            batteryLevel = 100,
+            isCharging = false,
+            activityType = ActivityType.STILL,
+            lastUpdated = System.currentTimeMillis(),
+            isOnline = true,
+            isCurrentUser = false
+        )
+        val currentList = _familyMembers.value.toMutableList()
+        currentList.add(newMember)
+        _familyMembers.value = currentList
+        persistMembers()
+    }
+
+    fun deleteFamilyMember(memberId: String) {
+        val currentList = _familyMembers.value.toMutableList()
+        currentList.removeAll { it.id == memberId && !it.isCurrentUser }
+        _familyMembers.value = currentList
+        persistMembers()
+    }
+
+    fun clearAllDemoMembers() {
+        val currentList = _familyMembers.value.filter { it.isCurrentUser }
+        _familyMembers.value = currentList
+        persistMembers()
+    }
+
+    @SuppressLint("MissingPermission")
+    fun refreshCurrentUserLocation(onLocationFound: ((Double, Double) -> Unit)? = null) {
+        try {
+            val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+            fusedClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        recordUserLocation(
+                            latitude = loc.latitude,
+                            longitude = loc.longitude,
+                            accuracy = loc.accuracy,
+                            speed = loc.speed,
+                            bearing = loc.bearing,
+                            batteryLevel = 100,
+                            isCharging = false,
+                            activityType = ActivityType.STILL
+                        )
+                    }
+                    onLocationFound?.invoke(loc.latitude, loc.longitude)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun isOnline(): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val activeNetwork = cm.activeNetwork ?: return false
@@ -122,20 +234,17 @@ class LocationRepository(private val context: Context) {
             isCharging = isCharging,
             activityType = activityType.name,
             timestamp = timestamp,
-            isSynced = online // If online, mark as synced immediately
+            isSynced = online
         )
 
         val insertedId = locationDao.insert(entity)
 
         if (online) {
-            // Upload to cloud / sync server (simulated direct push)
             pushLocationToServer(listOf(entity.copy(id = insertedId)))
         } else {
-            // Offline: schedule sync for when network becomes available
             scheduleOfflineSync()
         }
 
-        // Update local user in the family circle
         updateCurrentUserLocation(
             latitude, longitude, accuracy, speed * 3.6f, bearing, batteryLevel, isCharging, activityType, online
         )
@@ -212,9 +321,6 @@ class LocationRepository(private val context: Context) {
     }
 
     private suspend fun pushLocationToServer(points: List<OfflineLocationEntity>): Boolean {
-        // Here you would execute: apiService.uploadLocations(points)
-        // or write to Firebase Realtime Database / Firestore.
-        // For local resilience and demonstration, we simulate successful transmission:
         return true
     }
 

@@ -32,11 +32,16 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material3.IconButton
+import com.familysafety.tracker.ui.theme.AccentRed
+
 @Composable
 fun MemberStatusCard(
     member: FamilyMember,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDelete: (() -> Unit)? = null
 ) {
     Card(
         modifier = modifier
@@ -116,12 +121,26 @@ fun MemberStatusCard(
                 )
             }
 
-            // Battery telemetry
+            // Battery telemetry & Delete
             Column(horizontalAlignment = Alignment.End) {
                 BatteryIndicator(
                     batteryLevel = member.batteryLevel,
                     isCharging = member.isCharging
                 )
+                if (onDelete != null && !member.isCurrentUser) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Remove Member",
+                            tint = AccentRed,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
         }
     }

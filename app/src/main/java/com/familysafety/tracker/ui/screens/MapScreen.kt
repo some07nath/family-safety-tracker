@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -129,8 +131,13 @@ fun MapScreen(
                 familyMembers.forEach { member ->
                     val marker = Marker(mapView).apply {
                         position = GeoPoint(member.latitude, member.longitude)
-                        title = member.name
-                        snippet = "${member.activityType.displayName} • Battery: ${member.batteryLevel}%"
+                        if (member.isCurrentUser) {
+                            title = "📍 YOU (Current Location)"
+                            snippet = "Accuracy: ${member.accuracy.toInt()}m • Battery: ${member.batteryLevel}%"
+                        } else {
+                            title = member.name
+                            snippet = "${member.relationship} • ${member.activityType.displayName} • ${member.batteryLevel}%"
+                        }
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                         setOnMarkerClickListener { _, _ ->
                             selectedMember = member
@@ -174,6 +181,38 @@ fun MapScreen(
                         },
                         color = Color.White,
                         style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        // 2b. Live Location Badge
+        val myInfo = familyMembers.firstOrNull { it.isCurrentUser }
+        if (myInfo != null) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 16.dp, start = 16.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = null,
+                        tint = PrimaryBlue,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "You: %.4f, %.4f".format(myInfo.latitude, myInfo.longitude),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryBlue
                     )
                 }
             }
