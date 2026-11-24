@@ -239,7 +239,6 @@ fun MapScreen(
         }
 
         // 4. Emergency SOS Button (with SMS Fallback)
-        val myInfo = familyMembers.firstOrNull { it.isCurrentUser }
         SosButton(
             latitude = myInfo?.latitude ?: 22.5726,
             longitude = myInfo?.longitude ?: 88.3639,
