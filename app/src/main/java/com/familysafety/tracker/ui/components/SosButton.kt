@@ -65,7 +65,7 @@ fun SosButton(
             .size(68.dp)
             .shadow(8.dp, CircleShape)
     ) {
-        Column(horizontalAlignment = Alignment.CenterVertically) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = Icons.Default.Warning,
                 contentDescription = "Emergency SOS",
