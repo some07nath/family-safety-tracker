@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Family Safety</string>
+    <string name="tracking_notification_channel">Location Tracking Service</string>
+    <string name="tracking_notification_title">Family Safety Active</string>
+    <string name="tracking_notification_text">Sharing real-time location with your family circle</string>
+    <string name="sos_notification_channel">Emergency SOS Alerts</string>
+    <string name="sos_alert_title">EMERGENCY SOS ALERT</string>
+</resources>
