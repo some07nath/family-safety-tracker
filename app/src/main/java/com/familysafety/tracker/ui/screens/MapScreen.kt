@@ -24,6 +24,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,8 +34,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.familysafety.tracker.data.model.FamilyMember
 import com.familysafety.tracker.data.repository.LocationRepository
 import com.familysafety.tracker.ui.components.MemberStatusCard
@@ -55,17 +60,51 @@ fun MapScreen(
     val familyMembers by repository.familyMembers.collectAsState()
     val unsyncedCount by repository.unsyncedCountFlow.collectAsState(initial = 0)
     val isOnline = repository.isOnline()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var selectedMember by remember { mutableStateOf<FamilyMember?>(null) }
+    var hasCenteredOnUser by remember { mutableStateOf(false) }
+
+    // Default center set to Kolkata, India (Lat: 22.5726, Lng: 88.3639)
+    val kolkataCenter = remember { GeoPoint(22.5726, 88.3639) }
 
     val initialCenter = remember(familyMembers) {
         val me = familyMembers.firstOrNull { it.isCurrentUser } ?: familyMembers.firstOrNull()
-        if (me != null) GeoPoint(me.latitude, me.longitude) else GeoPoint(37.7749, -122.4194)
+        if (me != null) GeoPoint(me.latitude, me.longitude) else kolkataCenter
+    }
+
+    // Connect MapView to Android Activity Lifecycle (Crucial for OSMDroid tile downloader threads!)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapViewRef?.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapViewRef?.onPause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapViewRef?.onDetach()
+        }
+    }
+
+    // Auto-center camera when real device GPS location is locked
+    val currentUser = familyMembers.firstOrNull { it.isCurrentUser }
+    LaunchedEffect(currentUser) {
+        if (currentUser != null && !hasCenteredOnUser) {
+            hasCenteredOnUser = true
+            mapViewRef?.controller?.animateTo(
+                GeoPoint(currentUser.latitude, currentUser.longitude),
+                16.0,
+                800L
+            )
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 1. OpenStreetMap (OSMDroid) Canvas - 100% Free, No API Key Required
+        // 1. OpenStreetMap (OSMDroid) Canvas
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
@@ -79,6 +118,7 @@ fun MapScreen(
                     zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                     controller.setZoom(15.0)
                     controller.setCenter(initialCenter)
+                    onResume() // Immediately activate tile loader and render loop
                     mapViewRef = this
                 }
             },
@@ -104,7 +144,7 @@ fun MapScreen(
             }
         )
 
-        // 2. Offline / Sync Banner (Requirement #2)
+        // 2. Offline / Sync Banner
         AnimatedVisibility(
             visible = !isOnline || unsyncedCount > 0,
             modifier = Modifier
@@ -143,13 +183,12 @@ fun MapScreen(
         FloatingActionButton(
             onClick = {
                 val me = familyMembers.firstOrNull { it.isCurrentUser } ?: familyMembers.firstOrNull()
-                if (me != null) {
-                    mapViewRef?.controller?.animateTo(
-                        GeoPoint(me.latitude, me.longitude),
-                        16.0,
-                        800L
-                    )
-                }
+                val targetPoint = if (me != null) GeoPoint(me.latitude, me.longitude) else kolkataCenter
+                mapViewRef?.controller?.animateTo(
+                    targetPoint,
+                    16.0,
+                    800L
+                )
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -163,8 +202,8 @@ fun MapScreen(
         // 4. Emergency SOS Button (with SMS Fallback)
         val myInfo = familyMembers.firstOrNull { it.isCurrentUser }
         SosButton(
-            latitude = myInfo?.latitude ?: 0.0,
-            longitude = myInfo?.longitude ?: 0.0,
+            latitude = myInfo?.latitude ?: 22.5726,
+            longitude = myInfo?.longitude ?: 88.3639,
             batteryPct = myInfo?.batteryLevel ?: 100,
             emergencyContacts = emergencyContacts,
             modifier = Modifier

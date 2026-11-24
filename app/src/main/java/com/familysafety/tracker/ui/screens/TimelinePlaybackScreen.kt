@@ -28,6 +28,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -37,9 +38,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.familysafety.tracker.data.model.ActivityType
 import com.familysafety.tracker.data.model.LocationPoint
 import com.familysafety.tracker.data.repository.LocationRepository
@@ -61,16 +65,18 @@ fun TimelinePlaybackScreen(
     repository: LocationRepository,
     modifier: Modifier = Modifier
 ) {
-    // Sample historic route points for demonstration
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Sample historic route points in Kolkata, India
     val demoRoute = remember {
         listOf(
-            LocationPoint(37.7749, -122.4194, speed = 0f, timestamp = 1700000000000L, activityType = ActivityType.STILL),
-            LocationPoint(37.7758, -122.4180, speed = 15f, timestamp = 1700000300000L, activityType = ActivityType.IN_VEHICLE),
-            LocationPoint(37.7780, -122.4140, speed = 35f, timestamp = 1700000600000L, activityType = ActivityType.IN_VEHICLE),
-            LocationPoint(37.7820, -122.4100, speed = 48f, timestamp = 1700000900000L, activityType = ActivityType.IN_VEHICLE),
-            LocationPoint(37.7850, -122.4060, speed = 20f, timestamp = 1700001200000L, activityType = ActivityType.IN_VEHICLE),
-            LocationPoint(37.7885, -122.4010, speed = 4f, timestamp = 1700001500000L, activityType = ActivityType.WALKING),
-            LocationPoint(37.7890, -122.4000, speed = 0f, timestamp = 1700001800000L, activityType = ActivityType.STILL)
+            LocationPoint(22.5535, 88.3512, speed = 0f, timestamp = 1700000000000L, activityType = ActivityType.STILL), // Park Street
+            LocationPoint(22.5600, 88.3520, speed = 18f, timestamp = 1700000300000L, activityType = ActivityType.IN_VEHICLE),
+            LocationPoint(22.5670, 88.3510, speed = 32f, timestamp = 1700000600000L, activityType = ActivityType.IN_VEHICLE), // Esplanade
+            LocationPoint(22.5750, 88.3480, speed = 25f, timestamp = 1700000900000L, activityType = ActivityType.IN_VEHICLE), // BBD Bagh
+            LocationPoint(22.5850, 88.3426, speed = 15f, timestamp = 1700001200000L, activityType = ActivityType.IN_VEHICLE), // Howrah Bridge
+            LocationPoint(22.5860, 88.3410, speed = 4f, timestamp = 1700001500000L, activityType = ActivityType.WALKING),
+            LocationPoint(22.5870, 88.3400, speed = 0f, timestamp = 1700001800000L, activityType = ActivityType.STILL)  // Howrah Station
         )
     }
 
@@ -81,6 +87,22 @@ fun TimelinePlaybackScreen(
     val currentIndex = (sliderProgress * (demoRoute.size - 1)).toInt().coerceIn(0, demoRoute.size - 1)
     val activePoint = demoRoute[currentIndex]
     val activeGeoPoint = GeoPoint(activePoint.latitude, activePoint.longitude)
+
+    // Lifecycle observer for OSMDroid
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapViewRef?.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapViewRef?.onPause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapViewRef?.onDetach()
+        }
+    }
 
     // Playback loop
     LaunchedEffect(isPlaying) {
@@ -115,6 +137,7 @@ fun TimelinePlaybackScreen(
                         zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                         controller.setZoom(15.0)
                         controller.setCenter(GeoPoint(demoRoute.first().latitude, demoRoute.first().longitude))
+                        onResume()
                         mapViewRef = this
                     }
                 },
@@ -133,7 +156,7 @@ fun TimelinePlaybackScreen(
                     // Start Marker
                     val startMarker = Marker(mapView).apply {
                         position = GeoPoint(demoRoute.first().latitude, demoRoute.first().longitude)
-                        title = "Start (Home)"
+                        title = "Start (Park Street)"
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     }
                     mapView.overlays.add(startMarker)
@@ -141,7 +164,7 @@ fun TimelinePlaybackScreen(
                     // End Marker
                     val endMarker = Marker(mapView).apply {
                         position = GeoPoint(demoRoute.last().latitude, demoRoute.last().longitude)
-                        title = "End (Office)"
+                        title = "End (Howrah)"
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     }
                     mapView.overlays.add(endMarker)
@@ -178,7 +201,7 @@ fun TimelinePlaybackScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Route Playback - Today",
+                        text = "Route Playback - Kolkata",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )

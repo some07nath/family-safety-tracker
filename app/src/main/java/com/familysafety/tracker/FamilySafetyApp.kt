@@ -17,11 +17,11 @@ class FamilySafetyApp : Application() {
         instance = this
 
         // Initialize OpenStreetMap (OSMDroid) tile caching and user agent
-        org.osmdroid.config.Configuration.getInstance().load(
-            this,
-            getSharedPreferences("osmdroid_prefs", Context.MODE_PRIVATE)
-        )
-        org.osmdroid.config.Configuration.getInstance().userAgentValue = packageName
+        val config = org.osmdroid.config.Configuration.getInstance()
+        config.load(this, getSharedPreferences("osmdroid_prefs", Context.MODE_PRIVATE))
+        config.userAgentValue = "FamilySafetyTracker/1.0.1 (Android; com.familysafety.tracker)"
+        config.osmdroidBasePath = cacheDir
+        config.osmdroidTileCache = java.io.File(cacheDir, "tiles")
 
         repository = LocationRepository(this)
         createNotificationChannels()
