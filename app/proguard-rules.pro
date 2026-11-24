@@ -4,11 +4,11 @@
 -keep class * extends androidx.room.RoomDatabase
 -dontwarn androidx.room.paging.**
 
-# Keep Google Play Services and Maps
--keep class com.google.android.gms.maps.** { *; }
--keep interface com.google.android.gms.maps.** { *; }
+# Keep Google Play Services Location and OSMDroid
 -keep class com.google.android.gms.location.** { *; }
 -keep interface com.google.android.gms.location.** { *; }
+-keep class org.osmdroid.** { *; }
+-dontwarn org.osmdroid.**
 
 # Keep data models
 -keepclassmembers class com.familysafety.tracker.data.model.** { *; }

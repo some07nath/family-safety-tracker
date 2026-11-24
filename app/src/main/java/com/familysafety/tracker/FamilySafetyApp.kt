@@ -15,6 +15,14 @@ class FamilySafetyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+
+        // Initialize OpenStreetMap (OSMDroid) tile caching and user agent
+        org.osmdroid.config.Configuration.getInstance().load(
+            this,
+            getSharedPreferences("osmdroid_prefs", Context.MODE_PRIVATE)
+        )
+        org.osmdroid.config.Configuration.getInstance().userAgentValue = packageName
+
         repository = LocationRepository(this)
         createNotificationChannels()
     }

@@ -72,14 +72,12 @@ git push -u origin main
 
 ---
 
-## 🔑 Google Maps API Key Setup (Optional for Map Tiles)
+## 🗺️ Free OpenStreetMap (Zero API Key Needed!)
 
-To render Google Maps tiles properly:
-1. Obtain an API key from the [Google Cloud Console](https://console.cloud.google.com/) with **Maps SDK for Android** enabled.
-2. In your GitHub repository:
-   - Go to **Settings** > **Secrets and variables** > **Actions**.
-   - Add a repository secret named `MAPS_API_KEY` with your API key value.
-   - Or add `MAPS_API_KEY=your_key_here` to `local.properties` for local development.
+The app uses **OpenStreetMap (OSMDroid)** for map rendering:
+- **100% Free & Open Source**: No Google Cloud account, billing, or credit card required.
+- **Zero API Keys**: Maps and street tiles render immediately upon launching the app.
+- **Built-in Offline Tile Caching**: Previously viewed map tiles are cached locally for offline navigation.
 
 ---
 

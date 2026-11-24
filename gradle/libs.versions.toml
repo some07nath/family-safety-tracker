@@ -9,8 +9,7 @@ composeBom = "2024.06.00"
 composeCompiler = "1.5.14"
 navigationCompose = "2.7.7"
 playServicesLocation = "21.2.0"
-playServicesMaps = "18.2.0"
-mapsCompose = "4.3.3"
+osmdroid = "6.1.18"
 room = "2.6.1"
 workManager = "2.9.0"
 coroutines = "1.8.1"
@@ -32,10 +31,11 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 androidx-compose-material-icons = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIconsExtended" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 
-# Google Play Services & Maps
+# Location Services (Fused Location & Activity Recognition)
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
-play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "playServicesMaps" }
-maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
+
+# OpenStreetMap (Zero API Key, 100% Free & Offline-Ready)
+osmdroid-android = { group = "org.osmdroid", name = "osmdroid-android", version.ref = "osmdroid" }
 
 # Room Local Database
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }

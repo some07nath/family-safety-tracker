@@ -39,10 +39,7 @@
         android:theme="@style/Theme.FamilySafetyTracker"
         tools:targetApi="34">
 
-        <!-- Google Maps API Key -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}" />
+
 
         <!-- Main UI Activity -->
         <activity

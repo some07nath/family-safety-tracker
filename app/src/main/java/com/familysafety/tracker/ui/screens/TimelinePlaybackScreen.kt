@@ -1,5 +1,6 @@
 package com.familysafety.tracker.ui.screens
 
+import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +26,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,31 +33,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.Polyline
-import com.google.maps.android.compose.rememberCameraPositionState
+import androidx.compose.ui.viewinterop.AndroidView
 import com.familysafety.tracker.data.model.ActivityType
 import com.familysafety.tracker.data.model.LocationPoint
 import com.familysafety.tracker.data.repository.LocationRepository
 import com.familysafety.tracker.ui.theme.PrimaryBlue
 import com.familysafety.tracker.ui.theme.SecondaryTeal
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -67,9 +61,7 @@ fun TimelinePlaybackScreen(
     repository: LocationRepository,
     modifier: Modifier = Modifier
 ) {
-    val coroutineScope = rememberCoroutineScope()
-
-    // Sample historic route points for demonstration (e.g., commute from Home to Office)
+    // Sample historic route points for demonstration
     val demoRoute = remember {
         listOf(
             LocationPoint(37.7749, -122.4194, speed = 0f, timestamp = 1700000000000L, activityType = ActivityType.STILL),
@@ -84,14 +76,11 @@ fun TimelinePlaybackScreen(
 
     var sliderProgress by remember { mutableFloatStateOf(0f) }
     var isPlaying by remember { mutableStateOf(false) }
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
     val currentIndex = (sliderProgress * (demoRoute.size - 1)).toInt().coerceIn(0, demoRoute.size - 1)
     val activePoint = demoRoute[currentIndex]
-    val activeLatLng = LatLng(activePoint.latitude, activePoint.longitude)
-
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(activeLatLng, 14.5f)
-    }
+    val activeGeoPoint = GeoPoint(activePoint.latitude, activePoint.longitude)
 
     // Playback loop
     LaunchedEffect(isPlaying) {
@@ -107,46 +96,69 @@ fun TimelinePlaybackScreen(
 
     // Camera follow active point
     LaunchedEffect(currentIndex) {
-        cameraPositionState.animate(CameraUpdateFactory.newLatLng(activeLatLng))
+        mapViewRef?.controller?.animateTo(activeGeoPoint)
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        // Map Container
+        // OpenStreetMap Canvas for Route Playback
         Box(modifier = Modifier.weight(1f)) {
-            GoogleMap(
+            AndroidView(
                 modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                uiSettings = MapUiSettings(zoomControlsEnabled = false)
-            ) {
-                // Route Polyline
-                Polyline(
-                    points = demoRoute.map { LatLng(it.latitude, it.longitude) },
-                    color = PrimaryBlue,
-                    width = 12f
-                )
+                factory = { context ->
+                    MapView(context).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                        setTileSource(TileSourceFactory.MAPNIK)
+                        setMultiTouchControls(true)
+                        zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                        controller.setZoom(15.0)
+                        controller.setCenter(GeoPoint(demoRoute.first().latitude, demoRoute.first().longitude))
+                        mapViewRef = this
+                    }
+                },
+                update = { mapView ->
+                    mapViewRef = mapView
+                    mapView.overlays.clear()
 
-                // Start Marker
-                Marker(
-                    state = MarkerState(LatLng(demoRoute.first().latitude, demoRoute.first().longitude)),
-                    title = "Start (Home)",
-                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
-                )
+                    // Route Polyline
+                    val polyline = Polyline(mapView).apply {
+                        setPoints(demoRoute.map { GeoPoint(it.latitude, it.longitude) })
+                        outlinePaint.color = android.graphics.Color.parseColor("#1976D2")
+                        outlinePaint.strokeWidth = 12f
+                    }
+                    mapView.overlays.add(polyline)
 
-                // End Marker
-                Marker(
-                    state = MarkerState(LatLng(demoRoute.last().latitude, demoRoute.last().longitude)),
-                    title = "End (Office)",
-                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
-                )
+                    // Start Marker
+                    val startMarker = Marker(mapView).apply {
+                        position = GeoPoint(demoRoute.first().latitude, demoRoute.first().longitude)
+                        title = "Start (Home)"
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    }
+                    mapView.overlays.add(startMarker)
 
-                // Active animated marker
-                Marker(
-                    state = MarkerState(activeLatLng),
-                    title = "Current Playback Position",
-                    snippet = "${activePoint.activityType.displayName} • ${activePoint.speed.toInt()} km/h",
-                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
-                )
-            }
+                    // End Marker
+                    val endMarker = Marker(mapView).apply {
+                        position = GeoPoint(demoRoute.last().latitude, demoRoute.last().longitude)
+                        title = "End (Office)"
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    }
+                    mapView.overlays.add(endMarker)
+
+                    // Active animated position marker
+                    val activeMarker = Marker(mapView).apply {
+                        position = activeGeoPoint
+                        title = "Playback Position"
+                        snippet = "${activePoint.activityType.displayName} • ${activePoint.speed.toInt()} km/h"
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        showInfoWindow()
+                    }
+                    mapView.overlays.add(activeMarker)
+
+                    mapView.invalidate()
+                }
+            )
         }
 
         // Timeline Scrubber & Stats Controller

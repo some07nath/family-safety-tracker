@@ -12,16 +12,13 @@ android {
         applicationId = "com.familysafety.tracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
-
-        // Default placeholder for Google Maps API Key (can be overridden via environment variable or local.properties)
-        manifestPlaceholders["MAPS_API_KEY"] = "\${MAPS_API_KEY}"
     }
 
     buildTypes {
@@ -47,8 +44,7 @@ android {
     kotlinOptions {
         jvmTarget = "17"
         freeCompilerArgs += listOf(
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-            "-opt-in=com.google.maps.android.compose.MapsComposeExperimentalApi"
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
         )
     }
 
@@ -84,17 +80,18 @@ dependencies {
     implementation(libs.androidx.compose.material.icons)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    // Google Play Services Location & Google Maps
+    // Google Play Services Location (Fused Location & Activity Recognition - No API Key needed)
     implementation(libs.play.services.location)
-    implementation(libs.play.services.maps)
-    implementation(libs.maps.compose)
 
-    // Room Database
+    // OpenStreetMap (OSMDroid - 100% Free, No API Key, Built-in Offline Tile Caching)
+    implementation(libs.osmdroid.android)
+
+    // Room Database (Offline Queue)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
-    // WorkManager (Offline Sync)
+    // WorkManager (Offline Background Sync)
     implementation(libs.work.runtime.ktx)
 
     // Coroutines

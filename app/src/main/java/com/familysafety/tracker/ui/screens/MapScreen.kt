@@ -1,5 +1,6 @@
 package com.familysafety.tracker.ui.screens
 
+import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -23,35 +24,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.rememberCameraPositionState
+import androidx.compose.ui.viewinterop.AndroidView
 import com.familysafety.tracker.data.model.FamilyMember
 import com.familysafety.tracker.data.repository.LocationRepository
 import com.familysafety.tracker.ui.components.MemberStatusCard
 import com.familysafety.tracker.ui.components.SosButton
 import com.familysafety.tracker.ui.theme.AccentRed
 import com.familysafety.tracker.ui.theme.PrimaryBlue
-import kotlinx.coroutines.launch
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 
 @Composable
 fun MapScreen(
@@ -59,57 +52,57 @@ fun MapScreen(
     emergencyContacts: List<String>,
     modifier: Modifier = Modifier
 ) {
-    val coroutineScope = rememberCoroutineScope()
     val familyMembers by repository.familyMembers.collectAsState()
     val unsyncedCount by repository.unsyncedCountFlow.collectAsState(initial = 0)
     val isOnline = repository.isOnline()
 
-    // Focus point: default to first member or user
-    val initialTarget = remember(familyMembers) {
-        val me = familyMembers.firstOrNull { it.isCurrentUser } ?: familyMembers.firstOrNull()
-        if (me != null) LatLng(me.latitude, me.longitude) else LatLng(37.7749, -122.4194)
-    }
-
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(initialTarget, 14f)
-    }
-
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var selectedMember by remember { mutableStateOf<FamilyMember?>(null) }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        // 1. Google Maps Canvas
-        GoogleMap(
-            modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = MapProperties(isMyLocationEnabled = false),
-            uiSettings = MapUiSettings(
-                zoomControlsEnabled = false,
-                compassEnabled = true,
-                myLocationButtonEnabled = false
-            )
-        ) {
-            familyMembers.forEach { member ->
-                val pos = LatLng(member.latitude, member.longitude)
-                val markerHue = if (member.isCurrentUser) {
-                    BitmapDescriptorFactory.HUE_AZURE
-                } else if (member.batteryLevel < 20) {
-                    BitmapDescriptorFactory.HUE_RED
-                } else {
-                    BitmapDescriptorFactory.HUE_GREEN
-                }
+    val initialCenter = remember(familyMembers) {
+        val me = familyMembers.firstOrNull { it.isCurrentUser } ?: familyMembers.firstOrNull()
+        if (me != null) GeoPoint(me.latitude, me.longitude) else GeoPoint(37.7749, -122.4194)
+    }
 
-                Marker(
-                    state = MarkerState(position = pos),
-                    title = member.name,
-                    snippet = "${member.activityType.displayName} • Battery: ${member.batteryLevel}%",
-                    icon = BitmapDescriptorFactory.defaultMarker(markerHue),
-                    onClick = {
-                        selectedMember = member
-                        false
+    Box(modifier = modifier.fillMaxSize()) {
+        // 1. OpenStreetMap (OSMDroid) Canvas - 100% Free, No API Key Required
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                MapView(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    setTileSource(TileSourceFactory.MAPNIK)
+                    setMultiTouchControls(true)
+                    zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                    controller.setZoom(15.0)
+                    controller.setCenter(initialCenter)
+                    mapViewRef = this
+                }
+            },
+            update = { mapView ->
+                mapViewRef = mapView
+                mapView.overlays.clear()
+
+                familyMembers.forEach { member ->
+                    val marker = Marker(mapView).apply {
+                        position = GeoPoint(member.latitude, member.longitude)
+                        title = member.name
+                        snippet = "${member.activityType.displayName} • Battery: ${member.batteryLevel}%"
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        setOnMarkerClickListener { _, _ ->
+                            selectedMember = member
+                            showInfoWindow()
+                            true
+                        }
                     }
-                )
+                    mapView.overlays.add(marker)
+                }
+                mapView.invalidate()
             }
-        }
+        )
 
         // 2. Offline / Sync Banner (Requirement #2)
         AnimatedVisibility(
@@ -151,11 +144,11 @@ fun MapScreen(
             onClick = {
                 val me = familyMembers.firstOrNull { it.isCurrentUser } ?: familyMembers.firstOrNull()
                 if (me != null) {
-                    coroutineScope.launch {
-                        cameraPositionState.animate(
-                            CameraUpdateFactory.newLatLngZoom(LatLng(me.latitude, me.longitude), 15f)
-                        )
-                    }
+                    mapViewRef?.controller?.animateTo(
+                        GeoPoint(me.latitude, me.longitude),
+                        16.0,
+                        800L
+                    )
                 }
             },
             modifier = Modifier
@@ -198,14 +191,11 @@ fun MapScreen(
                             member = member,
                             onClick = {
                                 selectedMember = member
-                                coroutineScope.launch {
-                                    cameraPositionState.animate(
-                                        CameraUpdateFactory.newLatLngZoom(
-                                            LatLng(member.latitude, member.longitude),
-                                            15.5f
-                                        )
-                                    )
-                                }
+                                mapViewRef?.controller?.animateTo(
+                                    GeoPoint(member.latitude, member.longitude),
+                                    16.0,
+                                    800L
+                                )
                             }
                         )
                     }
